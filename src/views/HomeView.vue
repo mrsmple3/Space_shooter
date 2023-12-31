@@ -14,6 +14,12 @@
           :style="{ top: projectile.top + 'px', left: projectile.left + 'px' }"
         ></div>
         <div
+          v-for="explosion in explosions"
+          :key="explosion.id"
+          class="explosion"
+          :style="{ top: explosion.top + 'px', left: explosion.left + 'px' }"
+        ></div>
+        <div
           v-for="blueDiamond in blueDiamonds"
           :key="blueDiamond.id"
           class="blue-diamond"
@@ -23,9 +29,13 @@
           }"
         ></div>
       </div>
-      <div class="flex items-center gap-4">
+      <div class="flex items-center gap-4 mb-5">
         <button class="border px-2 py-2" @click="startGame">Start</button>
         <button class="border px-2 py-2" @click="stopGame">Stop</button>
+      </div>
+      <div class="flex items-center gap-5">
+        <span>Destroyed: {{ this.counterOfBang }}</span>
+        <span>Misses: {{ this.counterOfMiss }}</span>
       </div>
     </div>
   </div>
@@ -44,6 +54,10 @@ export default {
       isUpdatingWariors: false,
       blueDiamonds: [],
       blueDiamondIntervalId: null,
+      counterOfBang: 0,
+      counterOfMiss: 0,
+      explosions: [],
+      explosionDuration: 520,
     };
   },
   methods: {
@@ -85,7 +99,7 @@ export default {
             this.isUpdatingWariors = true;
             this.updateWariors();
           }
-        }, 1500);
+        }, Math.floor(Math.random() * (1500 - 700 + 1)) + 700);
       }
     },
     stopGame() {
@@ -98,9 +112,16 @@ export default {
           blueDiamond.top += 2;
         });
 
-        this.blueDiamonds = this.blueDiamonds.filter(
-          (warriors) => warriors.top < 398
-        );
+        this.blueDiamonds = this.blueDiamonds.filter((warrior) => {
+          const shouldKeep = warrior.top < 398;
+
+          if (!shouldKeep) {
+            // Increment counterOfMiss if a blue diamond disappears
+            this.counterOfMiss++;
+          }
+
+          return shouldKeep;
+        });
 
         if (this.blueDiamonds.length > 0) {
           requestAnimationFrame(update);
@@ -112,7 +133,7 @@ export default {
     },
     handleCollisions() {
       this.projectiles = this.projectiles.filter((projectile) => {
-        // Проверка столкновения с синими алмазами
+        // Check for collisions with blue diamonds
         const hitBlueDiamond = this.blueDiamonds.find((blueDiamond) => {
           return (
             projectile.left < blueDiamond.left + 30 &&
@@ -123,10 +144,20 @@ export default {
         });
 
         if (hitBlueDiamond) {
-          // Удаляем синий алмаз
+          const explosion = {
+            id: Date.now(),
+            top: hitBlueDiamond.top - 15,
+            left: hitBlueDiamond.left - 15,
+            startTime: Date.now(), // Set the start time
+          };
+          this.explosions.push(explosion);
+
+          // Remove the blue diamond
           const index = this.blueDiamonds.indexOf(hitBlueDiamond);
           this.blueDiamonds.splice(index, 1);
-          return false; // Удаляем пулю
+
+          this.counterOfBang++;
+          return false; // Remove the projectile
         }
 
         return projectile.top > 0;
@@ -136,12 +167,28 @@ export default {
       this.updateProjectiles();
       this.handleCollisions();
 
-      if (this.projectiles.length > 0 || this.blueDiamonds.length > 0) {
+      if (
+        this.projectiles.length > 0 ||
+        this.blueDiamonds.length > 0 ||
+        this.explosions.length > 0
+      ) {
         requestAnimationFrame(() => this.updateGame());
       } else {
         this.isUpdatingProjectiles = false;
         this.isUpdatingWariors = false;
       }
+    },
+    updateExplosions() {
+      // Remove expired explosions
+      this.explosions = this.explosions.filter((explosion) => {
+        // Check if the explosion is still within the specified duration
+        if (Date.now() - explosion.startTime < this.explosionDuration) {
+          return true; // Keep the explosion
+        }
+
+        // If the duration has passed, remove the explosion
+        return false;
+      });
     },
   },
 };
@@ -176,5 +223,25 @@ export default {
   background-color: #00f;
   clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
   z-index: 1;
+}
+.explosion {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  background: url("https://www.onlygfx.com/wp-content/uploads/2018/02/starburst-explosion-2-1.png"); /* Use an explosion image */
+  background-size: cover;
+  animation: explode 0.5s forwards;
+  z-index: 2; /* Ensure the explosion appears above other elements */
+}
+
+@keyframes explode {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
 }
 </style>
