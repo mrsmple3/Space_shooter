@@ -1,9 +1,19 @@
 <template>
   <div class="home">
+    <div
+      class="absolute text-white top-1/3 left-1/2 right-1/2 text-nowrap z-50 flex flex-col items-center gap-5"
+      v-if="gameOverVisible"
+    >
+      <h3 class="font-bold text-9xl">Game Over</h3>
+      <span class="font-medium text-2xl">Accuracy: {{ this.accuracy }}</span>
+    </div>
+
     <div id="app" class="flex flex-col items-center">
       <div
         @mousemove="moveDiamond"
         @click="bang"
+        @mousedown="pulimotDown"
+        @mouseup="pulimotUp"
         class="game-container w-full mb-6"
       >
         <div class="diamond" :style="{ left: diamond.left + 'px' }"></div>
@@ -28,6 +38,7 @@
           v-for="blueDiamond in blueDiamonds"
           :key="blueDiamond.id"
           class="blue-diamond"
+          :class="{ stone: blueDiamond.isStone }"
           :style="{
             top: blueDiamond.top + 'px',
             left: blueDiamond.left + 'px',
@@ -46,12 +57,17 @@
           Stop
         </button>
       </div>
+      <span class="mb-4"
+        >Health❤️: {{ this.health - this.counterOf.miss }}</span
+      >
       <div class="flex items-center gap-5 mb-4">
         <span>Destroyed: {{ this.counterOf.bang }}</span>
         <span>Misses: {{ this.counterOf.miss }}</span>
         <span>Projectlies: {{ this.counterOf.projectiles }}</span>
       </div>
-      <span class="" v-if="!isStarted">Accuracy: {{ this.accuracy }}</span>
+      <span class="" v-if="!isStarted"
+        ><strong>Accuracy:</strong> {{ this.accuracy }}</span
+      >
     </div>
   </div>
 </template>
@@ -85,16 +101,57 @@ export default {
       explosions: [],
       explosionDuration: 520,
       accuracy: 0,
+      gameZone: window.innerHeight * 0.8 - 20,
+      speedRange: 0,
+      countOfSpeed: 10,
+      health: 10,
+      bangInterval: null,
+      stoneIntervalId: null,
+      stoneCount: 0,
+      isMousePressed: false,
+      gameOverVisible: false,
     };
   },
+  mounted() {
+    document.addEventListener("contextmenu", this.disableContextMenu);
+  },
+  beforeUnmount() {
+    document.removeEventListener("contextmenu", this.disableContextMenu);
+  },
   methods: {
+    disableContextMenu(event) {
+      event.preventDefault();
+    },
     moveDiamond(event) {
       this.diamond.left = event.clientX - 15;
+    },
+    pulimotDown(event) {
+      if (event.button === 2) {
+        event.preventDefault();
+        this.isMousePressed = true;
+        return;
+      }
+
+      if (!this.isMousePressed) {
+        this.bangInterval = setInterval(() => {
+          this.bang();
+        }, 200 - this.speedRange);
+      }
+    },
+
+    pulimotUp(event) {
+      if (event.button === 2) {
+        event.preventDefault();
+        this.isMousePressed = false;
+        return;
+      }
+
+      clearInterval(this.bangInterval);
     },
     bang() {
       const newProjectile = {
         id: Date.now(),
-        top: 380,
+        top: this.gameZone,
         left: this.diamond.left - 12,
       };
       this.projectiles.push(newProjectile);
@@ -105,41 +162,59 @@ export default {
       }
     },
     startGame() {
-      if (this.blueDiamonds.length === 0) {
-        this.isStarted = true;
-        this.counterOf.bang = 0;
-        this.counterOf.miss = 0;
-        this.counterOf.projectiles = 0;
-        this.blueDiamondIntervalId = setInterval(() => {
-          const newBlueDiamond = {
+      this.isStarted = true;
+      this.gameOverVisible = false;
+      this.counterOf.bang = 0;
+      this.counterOf.miss = 0;
+      this.counterOf.projectiles = 0;
+      this.blueDiamondIntervalId = setInterval(() => {
+        const newBlueDiamond = {
+          id: Date.now(),
+          top: 0,
+          left: Math.floor(Math.random() * (window.innerWidth - 30)),
+          isStone: false,
+        };
+        this.blueDiamonds.push(newBlueDiamond);
+        if (!this.isUpdatingWariors) {
+          this.isUpdatingWariors = true;
+          this.updateWariors();
+        }
+        this.stoneCount++;
+        if (this.stoneCount === 5) {
+          this.stoneCount = 0;
+          const newStone = {
             id: Date.now(),
             top: 0,
             left: Math.floor(Math.random() * (window.innerWidth - 30)),
+            isStone: true,
           };
-          this.blueDiamonds.push(newBlueDiamond);
-          if (!this.isUpdatingWariors) {
-            this.isUpdatingWariors = true;
-            this.updateWariors();
-          }
-        }, Math.floor(Math.random() * (1500 - 700 + 1)) + 700);
-      }
+          this.blueDiamonds.push(newStone);
+        }
+      }, Math.floor(Math.random() * (1500 - 600 + 1)) + 600);
     },
     stopGame() {
       this.isStarted = false;
+      const projectiles = this.counterOf.projectiles || 1;
       this.accuracy =
-        Math.floor(
-          (this.counterOf.bang /
-            (this.counterOf.projectiles + this.counterOf.miss)) *
-            10000
-        ) | 0;
+        ((projectiles / this.counterOf.bang) * 100 - this.counterOf.miss) | 0;
       clearInterval(this.blueDiamondIntervalId);
       this.blueDiamonds = [];
+      this.projectiles = [];
+      this.gameOverVisible = true; // Показываем блок "Game Over"
+      setTimeout(() => {
+        this.gameOverVisible = false; // Скрываем блок "Game Over" через некоторое время
+      }, 3500); // Пример: скрыть через 2 секунды
     },
     updateGame() {
-      updateProjectiles(this.projectiles, 5);
+      updateProjectiles(this.projectiles, 5 + this.speedRange);
       this.handleCollisions();
       updateExplosions(this.explosions, this.explosionDuration);
-      // Check collision between red diamond and blue diamonds
+
+      if (this.counterOf.bang > this.countOfSpeed) {
+        this.speedRange += 0.002;
+        this.countOfSpeed += 10;
+      }
+      if (this.counterOf.miss === 10) this.stopGame();
       if (
         this.projectiles.length > 0 ||
         this.blueDiamonds.length > 0 ||
@@ -156,13 +231,12 @@ export default {
         return (
           this.diamond.left < blueDiamond.left + 30 &&
           this.diamond.left + 30 > blueDiamond.left &&
-          390 < blueDiamond.top + 30 &&
-          390 + 30 > blueDiamond.top
+          this.gameZone < blueDiamond.top + 30 &&
+          this.gameZone + 30 > blueDiamond.top
         );
       });
 
       if (hitRedDiamond) {
-        // Game over when red diamond collides with blue diamonds
         this.stopGame();
         return false;
       }
@@ -170,13 +244,12 @@ export default {
     updateWariors() {
       const update = () => {
         this.blueDiamonds.forEach((blueDiamond) => {
-          blueDiamond.top += 2;
+          blueDiamond.top += 2 + this.speedRange;
         });
-
         this.blueDiamonds = this.blueDiamonds.filter((warrior) => {
-          const shouldKeep = warrior.top < 398;
+          const shouldKeep = warrior.top < this.gameZone;
           if (!shouldKeep) {
-            this.counterOf.miss++;
+            if (!warrior.isStone) this.counterOf.miss++;
           }
           return shouldKeep;
         });
@@ -193,6 +266,7 @@ export default {
       this.projectiles = this.projectiles.filter((projectile) => {
         // Check collision between projectiles and blue diamonds
         const hitBlueDiamond = this.blueDiamonds.find((blueDiamond) => {
+          // Игнорируем камни при проверке столкновения
           return (
             projectile.left < blueDiamond.left + 30 &&
             projectile.left + this.projectileSize.width > blueDiamond.left &&
@@ -210,8 +284,10 @@ export default {
           };
           this.explosions.push(explosion);
           const index = this.blueDiamonds.indexOf(hitBlueDiamond);
-          this.blueDiamonds.splice(index, 1);
-          this.counterOf.bang++;
+          if (!this.blueDiamonds[index].isStone) {
+            this.blueDiamonds.splice(index, 1);
+            this.counterOf.bang++;
+          }
           return false;
         }
 
@@ -225,9 +301,11 @@ export default {
 <style lang="scss">
 .game-container {
   position: relative;
-  height: 400px;
+  height: 80vh;
   border: 1px solid #ccc;
   box-sizing: border-box;
+  background: black;
+  box-shadow: 0 0 10px rgba(255, 0, 0, 5);
 }
 
 .diamond {
@@ -235,8 +313,7 @@ export default {
   bottom: 0;
   width: 30px;
   height: 30px;
-  background-color: #f00;
-  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+  background: url(../assets/img/redfighter0005.png) center/cover;
 }
 .projectile {
   position: absolute;
@@ -250,8 +327,18 @@ export default {
   position: absolute;
   width: 30px;
   height: 30px;
-  background-color: #00f;
-  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+  background: url("https://i.pinimg.com/originals/41/4b/f7/414bf78283804a8c9901da0e7b912a70.png")
+    center/cover;
+  transform: rotate(90deg);
+  z-index: 1;
+}
+.stone {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  background: url("https://images.squarespace-cdn.com/content/v1/5b28fd4f85ede1db354cc1c6/1533510045865-LA86PVYAN990HPFP0CNN/Tcom_Rock_CliffMountain_thumb1.png")
+    center/cover;
+  transform: rotate(90deg);
   z-index: 1;
 }
 .explosion {
